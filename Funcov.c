@@ -68,11 +68,11 @@ void init(int argc,char* argv[],prog_info_t* info){
 
   if(out_flag == 0){
     sprintf(info->out_dir,"./output");
-    // if(mkdir(info->out_dir,0776) != 0){
-    //   free(info);
-    //   fprintf(stderr,"failed to create output directory\n");
-    //   exit(1);
-    // }
+    if(mkdir(info->out_dir,0776) != 0){
+      free(info);
+      fprintf(stderr,"failed to create output directory\n");
+      exit(1);
+    }
   }
   
   printf("init SUCCESS\n");
@@ -98,6 +98,10 @@ void find_input(prog_info_t* info){
       info->inputs_num++;
     }
 
+    info->result = (int**)malloc(sizeof(int*)*info->inputs_num);
+    for(int i = 0; i < info->inputs_num; i++){
+      info->result[i] = (int*)calloc(100,sizeof(int));
+    }
   }
   
   printf("Find input SUCCESS\n");
@@ -105,7 +109,7 @@ void find_input(prog_info_t* info){
 
 void execute_prog(prog_info_t* info){
   int inp;
-  int path_length = strlen(info->inp_dir) + strlen(info->inputs[info->index]);
+  int path_length = strlen(info->inp_dir) + strlen(info->inputs[info->index]) + 2;
   char* path = (char*)malloc(sizeof(char)*path_length);
   sprintf(path,"%s/%s",info->inp_dir,info->inputs[info->index]);
 
@@ -150,52 +154,105 @@ int get_info(prog_info_t* info){
   ssize_t s;
   char buf[MAX_BUF];
   FILE *fp = fdopen(out_pipes[0],"r");
+
   if(fp == NULL){
     fprintf(stderr,"fdopen failed\n");
     exit(1);
   }
+
   while(fgets(buf,MAX_BUF,fp)!= NULL){
-    printf("info buf: %s",buf);
+    char* ptr;
+    if((ptr = strstr(buf,"guard:"))!= NULL ){
+      ptr = strtok(ptr," ");
+      ptr = strtok(NULL," ");
+      int num = atoi(ptr);
+      info->result[info->index][num]++;
+    } 
   }
   
   close(out_pipes[0]);
   close(err_pipes[0]);
 }
+
 int run(prog_info_t* info){
-  if (pipe(in_pipes) != 0) {
+
+  if (pipe(in_pipes) != 0) 
+  {
 		perror("IN Pipe Error\n") ;
 		exit(1) ;
 	}
-	if (pipe(out_pipes) != 0) {
+
+	if (pipe(out_pipes) != 0) 
+  {
 		perror("OUT Pipe Error\n") ;
 		exit(1) ;
 	}
-	if (pipe(err_pipes) != 0) {
+
+	if (pipe(err_pipes) != 0) 
+  {
 		perror("ERR Pipe Error\n") ;
 		exit(1) ;
 	}
   
   child = fork();
   
-  if(child == 0){
+  if(child == 0)
+  {
     execute_prog(info);
-  }else if(child > 0){
+
+  }else if(child > 0)
+  {
     get_info(info);
-  }else{
+    info->index++;
+  }else
+  {
     fprintf(stderr,"Fork failed\n");
     exit(1);
+
   }
 
   return 0;
 }
 
+void info_free(prog_info_t* info){
+  for(int i = 0; i < info->inputs_num;i++){
+    free(info->inputs[i]);
+    free(info->result[i]);
+  }
+
+  free(info->result);
+  free(info);
+}
+
+void save_result(prog_info_t* info){
+
+
+  for(int i = 0; i < info->inputs_num; i++){
+
+    int length = strlen(info->out_dir) + strlen(info->inputs[i]) + 6;
+    char* path = (char*)malloc(sizeof(char)*length);
+    sprintf(path,"%s/%s.csv",info->out_dir,info->inputs[i]);
+
+    FILE* fp = fopen(path,"wb");
+    for(int j = 0; j < 100; j++){
+      fprintf(fp,"%d,%d",j,info->result[i][j]);
+    }
+    fclose(fp);
+    free(path);
+  }
+}
+
 prog_info_t* info_init(){
+
   prog_info_t* new_info = (prog_info_t*)malloc(sizeof(prog_info_t));
+
   memset(new_info->binary,0,MAX_ADDR);
   memset(new_info->inp_dir,0,MAX_ADDR);
   memset(new_info->out_dir,0,MAX_ADDR);
+
   new_info->inputs_num = 0;
   new_info->index = 0;
+
   return new_info;
 }
 
@@ -204,17 +261,13 @@ int main(int argc,char* argv[]){
 
   init(argc,argv,info);
 	find_input(info);
-  run(info);
-  // execute_prog(info);
-  // while(info->inputs_num > 0){
 
-  // }
-  
-  for(int i = 0; i < info->inputs_num;i++){
-    free(info->inputs[i]);
+  while(info->inputs_num > info->index){
+    run(info);
   }
 
-  free(info);
-  printf("end\n");
+  save_result(info);
+  info_free(info);
+
   return 0; 
 }
