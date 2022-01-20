@@ -3,6 +3,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h> 
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <fcntl.h>
@@ -15,6 +16,15 @@ static int out_pipes[2] ;
 static int err_pipes[2] ;
 
 static pid_t child;
+
+void
+time_handler(int sig){
+	if(sig == SIGALRM){
+		perror("timeout ");
+		kill(child, SIGINT);
+	}
+}
+
 void usage(){
   printf("  ===========input format============\n"); 
   printf("funcov -b [excute_binary path] -i [inp-dir path] -o [output-dir path]\n");
@@ -99,8 +109,13 @@ void find_input(prog_info_t* info){
     }
 
     info->result = (int**)malloc(sizeof(int*)*info->inputs_num);
+    info->result_func_num= (int*)malloc(sizeof(int)*info->inputs_num);
+    info->uni = (char*)malloc(sizeof(char)*MAP_SIZE);
+    memset(info->uni,0,sizeof(char)*MAP_SIZE);
+
     for(int i = 0; i < info->inputs_num; i++){
-      info->result[i] = (int*)calloc(100,sizeof(int));
+      info->result[i] = (int*)calloc(MAP_SIZE,sizeof(int));
+      info->result_func_num[i] = MAP_SIZE;
     }
   }
   
@@ -110,6 +125,7 @@ void find_input(prog_info_t* info){
 void execute_prog(prog_info_t* info){
   int inp;
   int path_length = strlen(info->inp_dir) + strlen(info->inputs[info->index]) + 2;
+  
   char* path = (char*)malloc(sizeof(char)*path_length);
   sprintf(path,"%s/%s",info->inp_dir,info->inputs[info->index]);
 
@@ -163,9 +179,29 @@ int get_info(prog_info_t* info){
   while(fgets(buf,MAX_BUF,fp)!= NULL){
     char* ptr;
     if((ptr = strstr(buf,"guard:"))!= NULL ){
+     
       ptr = strtok(ptr," ");
       ptr = strtok(NULL," ");
+      
+      if(ptr == NULL){
+	        continue;
+      }
+      
       int num = atoi(ptr);
+      
+      if(num > info->result_func_num[info->index])
+      {
+        info->result_func_num[info->index] = 2*info->result_func_num[info->index];
+        info->max_size = info->result_func_num[info->index];
+        
+        realloc(info->result[info->index],sizeof(int)*info->result_func_num[info->index]);
+        realloc(info->uni,sizeof(char)*info->result_func_num[info->index]);
+      }
+
+      if(info->uni[num] == 0){
+	info->uni[num] = 1;
+      }
+
       info->result[info->index][num]++;
     } 
   }
@@ -197,11 +233,13 @@ int run(prog_info_t* info){
   child = fork();
   
   if(child == 0)
-  {
+  { 
+    alarm(1);
     execute_prog(info);
 
   }else if(child > 0)
   {
+    printf("get info start\n");
     get_info(info);
     info->index++;
   }else
@@ -219,7 +257,9 @@ void info_free(prog_info_t* info){
     free(info->inputs[i]);
     free(info->result[i]);
   }
-
+  
+  free(info->uni);
+  free(info->result_func_num);
   free(info->result);
   free(info);
 }
@@ -234,16 +274,39 @@ void save_result(prog_info_t* info){
     sprintf(path,"%s/%s.csv",info->out_dir,info->inputs[i]);
 
     FILE* fp = fopen(path,"wb");
-    fprintf(fp,"Function,hit\n");
+    
+    if(fp == NULL)
+    {
+      fprintf(stderr,"fopen failed\n");
+      exit(1);
+    }
+    
     int cnt = 0;
-    for(int j = 0; j < 100; j++){
+    fprintf(fp,"Function,hit\n");
+    
+    for(int j = 0; j < info->result_func_num[i]; j++){
       if(info->result[i][j] != 0){
 	cnt++;
         fprintf(fp,"%d,%d\n",j,info->result[i][j]);
       }
     }
+    
     fprintf(fp,"total,%d\n",cnt);
+    if(i == 0){
+	cnt = 0;
+	for(int j = 0; j < info->max_size; j++){
+		if(info->uni[j] != 0){
+			cnt++;
+		}
+	}
+    }
     fclose(fp);
+    FILE* fp2 = fopen("union.csv","a+");
+    if(fp2 == NULL){
+	fprintf(stderr,"fopen failed\n");
+    }
+    fprintf(fp2,"union,%d\n",cnt);
+    fclose(fp2);
     free(path);
   }
 }
@@ -258,18 +321,20 @@ prog_info_t* info_init(){
 
   new_info->inputs_num = 0;
   new_info->index = 0;
-
   return new_info;
 }
 
 int main(int argc,char* argv[]){
+  signal(SIGALRM, time_handler);
+  
   prog_info_t* info = info_init();
 
   init(argc,argv,info);
 	find_input(info);
 
   while(info->inputs_num > info->index){
-    run(info);
+      printf("index: %d\n",info->index);
+      run(info);
   }
 
   save_result(info);
