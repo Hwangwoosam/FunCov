@@ -3,7 +3,6 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h> 
-#include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <fcntl.h>
@@ -16,15 +15,6 @@ static int out_pipes[2] ;
 static int err_pipes[2] ;
 
 static pid_t child;
-
-void
-time_handler(int sig){
-	if(sig == SIGALRM){
-		perror("timeout ");
-		kill(child, SIGINT);
-	}
-}
-
 void usage(){
   printf("  ===========input format============\n"); 
   printf("funcov -b [excute_binary path] -i [inp-dir path] -o [output-dir path]\n");
@@ -110,7 +100,7 @@ void find_input(prog_info_t* info){
 
     info->result = (int**)malloc(sizeof(int*)*info->inputs_num);
     for(int i = 0; i < info->inputs_num; i++){
-      info->result[i] = (int*)calloc(100,sizeof(int)); // size?
+      info->result[i] = (int*)calloc(100,sizeof(int));
     }
   }
   
@@ -176,9 +166,6 @@ int get_info(prog_info_t* info){
       ptr = strtok(ptr," ");
       ptr = strtok(NULL," ");
       int num = atoi(ptr);
-      if(num >= 100){
-        continue;
-      }
       info->result[info->index][num]++;
     } 
   }
@@ -206,12 +193,11 @@ int run(prog_info_t* info){
 		perror("ERR Pipe Error\n") ;
 		exit(1) ;
 	}
-
+  
   child = fork();
   
   if(child == 0)
   {
-    alarm(1);
     execute_prog(info);
 
   }else if(child > 0)
@@ -248,15 +234,15 @@ void save_result(prog_info_t* info){
     sprintf(path,"%s/%s.csv",info->out_dir,info->inputs[i]);
 
     FILE* fp = fopen(path,"wb");
-    fprintf(fp,"function,hit\n");
+    fprintf(fp,"Function,hit\n");
     int cnt = 0;
     for(int j = 0; j < 100; j++){
       if(info->result[i][j] != 0){
-        cnt ++;
+	cnt++;
         fprintf(fp,"%d,%d\n",j,info->result[i][j]);
       }
     }
-    fprintf(fp,"total,%d",cnt);
+    fprintf(fp,"total,%d\n",cnt);
     fclose(fp);
     free(path);
   }
