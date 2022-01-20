@@ -100,7 +100,7 @@ void find_input(prog_info_t* info){
 
     info->result = (int**)malloc(sizeof(int*)*info->inputs_num);
     for(int i = 0; i < info->inputs_num; i++){
-      info->result[i] = (int*)calloc(100,sizeof(int));
+      info->result[i] = (int*)calloc(100,sizeof(int)); // size?
     }
   }
   
@@ -166,6 +166,9 @@ int get_info(prog_info_t* info){
       ptr = strtok(ptr," ");
       ptr = strtok(NULL," ");
       int num = atoi(ptr);
+      if(num >= 100){
+        continue;
+      }
       info->result[info->index][num]++;
     } 
   }
