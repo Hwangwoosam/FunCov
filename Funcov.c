@@ -249,11 +249,14 @@ void save_result(prog_info_t* info){
 
     FILE* fp = fopen(path,"wb");
     fprintf(fp,"function,hit\n");
+    int cnt = 0;
     for(int j = 0; j < 100; j++){
       if(info->result[i][j] != 0){
+        cnt ++;
         fprintf(fp,"%d,%d\n",j,info->result[i][j]);
       }
     }
+    fprintf(fp,"total,%d",cnt);
     fclose(fp);
     free(path);
   }
