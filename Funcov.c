@@ -3,6 +3,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h> 
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <fcntl.h>
@@ -15,6 +16,15 @@ static int out_pipes[2] ;
 static int err_pipes[2] ;
 
 static pid_t child;
+
+void
+time_handler(int sig){
+	if(sig == SIGALRM){
+		perror("timeout ");
+		kill(child, SIGINT);
+	}
+}
+
 void usage(){
   printf("  ===========input format============\n"); 
   printf("funcov -b [excute_binary path] -i [inp-dir path] -o [output-dir path]\n");
@@ -196,11 +206,12 @@ int run(prog_info_t* info){
 		perror("ERR Pipe Error\n") ;
 		exit(1) ;
 	}
-  
+
   child = fork();
   
   if(child == 0)
   {
+    alarm(1);
     execute_prog(info);
 
   }else if(child > 0)
@@ -237,9 +248,11 @@ void save_result(prog_info_t* info){
     sprintf(path,"%s/%s.csv",info->out_dir,info->inputs[i]);
 
     FILE* fp = fopen(path,"wb");
-    fprintf(fp,"path,hit\n");
+    fprintf(fp,"function,hit\n");
     for(int j = 0; j < 100; j++){
-      fprintf(fp,"%d,%d\n",j,info->result[i][j]);
+      if(info->result[i][j] != 0){
+        fprintf(fp,"%d,%d\n",j,info->result[i][j]);
+      }
     }
     fclose(fp);
     free(path);
