@@ -234,8 +234,9 @@ void save_result(prog_info_t* info){
     sprintf(path,"%s/%s.csv",info->out_dir,info->inputs[i]);
 
     FILE* fp = fopen(path,"wb");
+    fprintf(fp,"path,hit\n");
     for(int j = 0; j < 100; j++){
-      fprintf(fp,"%d,%d",j,info->result[i][j]);
+      fprintf(fp,"%d,%d\n",j,info->result[i][j]);
     }
     fclose(fp);
     free(path);

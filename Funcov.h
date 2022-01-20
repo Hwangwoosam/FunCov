@@ -7,6 +7,7 @@ typedef struct prog_info{
     char inp_dir[MAX_ADDR];
     char binary[MAX_ADDR];
     char* inputs[MAX_NUM];
+    int** result;
     int inputs_num;
     int index;
 }prog_info_t;
