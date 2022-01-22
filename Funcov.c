@@ -6,6 +6,7 @@
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/types.h>
+#include <regex.h>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -16,6 +17,9 @@ static int out_pipes[2] ;
 static int err_pipes[2] ;
 
 static pid_t child;
+
+prog_info_t* info;
+
 
 void
 time_handler(int sig){
@@ -30,12 +34,26 @@ void usage(){
   printf("funcov -b [excute_binary path] -i [inp-dir path] -o [output-dir path]\n");
 }
 
-void init(int argc,char* argv[],prog_info_t* info){
+unsigned hash(char* name){
+  unsigned hash_val = 0;
+  
+  int length = strlen(name);
+  
+  for(int i = 0; i < length; i++){
+    hash_val = name[i] + 31*hash_val;
+  }
+
+  return hash_val%HASH_SIZE;
+}
+
+void get_option(int argc,char* argv[],prog_info_t* info){
   int c;
   int inp_flag = 0,b_flag =0,out_flag = 0;
+
   while( (c= getopt(argc,argv,"b:i:o:")) != -1){
     switch (c)
     {
+
     case 'b':
       b_flag = 1;
       if(access(optarg,X_OK) == 0){
@@ -45,6 +63,7 @@ void init(int argc,char* argv[],prog_info_t* info){
         exit(1);
       }
       break;
+      
     case 'i':
       inp_flag = 1;
       if(access(optarg,X_OK) == 0){
@@ -54,6 +73,7 @@ void init(int argc,char* argv[],prog_info_t* info){
         exit(1);
       }
       break;
+
     case 'o':
       out_flag = 1;
       if(access(optarg,X_OK) == 0){
@@ -63,6 +83,7 @@ void init(int argc,char* argv[],prog_info_t* info){
         exit(1);
       }
       break;
+
     default:
       usage();
       exit(1);
@@ -108,26 +129,23 @@ void find_input(prog_info_t* info){
       info->inputs_num++;
     }
 
-    info->result = (int**)malloc(sizeof(int*)*info->inputs_num);
-    info->result_func_num= (int*)malloc(sizeof(int)*info->inputs_num);
-    info->uni = (char*)malloc(sizeof(char)*MAP_SIZE);
-    memset(info->uni,0,sizeof(char)*MAP_SIZE);
-
-    for(int i = 0; i < info->inputs_num; i++){
-      info->result[i] = (int*)calloc(MAP_SIZE,sizeof(int));
-      info->result_func_num[i] = MAP_SIZE;
-    }
   }
-  
+  info->func_size = (int*)malloc(sizeof(int)*info->inputs_num);
+  info->func_union = (function_hit_t**)malloc(sizeof(function_hit_t*)*info->inputs_num);
+
+  for(int i = 0; i < info->inputs_num; i++){
+    info->func_size[i] = 0;
+    info->func_union[i] = (function_hit_t*)calloc(MAX_NUM,sizeof(function_hit_t));
+  }
   printf("Find input SUCCESS\n");
 }
 
 void execute_prog(prog_info_t* info){
   int inp;
-  int path_length = strlen(info->inp_dir) + strlen(info->inputs[info->index]) + 2;
+  int path_length = strlen(info->inp_dir) + strlen(info->inputs[info->trial]) + 2;
   
   char* path = (char*)malloc(sizeof(char)*path_length);
-  sprintf(path,"%s/%s",info->inp_dir,info->inputs[info->index]);
+  sprintf(path,"%s/%s",info->inp_dir,info->inputs[info->trial]);
 
   ssize_t length;
   char buf[MAX_BUF];
@@ -138,12 +156,13 @@ void execute_prog(prog_info_t* info){
   }
 
   while((length = read(inp,buf,MAX_BUF)) > 0){
-    write(in_pipes[1],buf,length);
+    buf[length]='\0';
+    int s = write(in_pipes[1],buf,length);
   }
 
-  close(in_pipes[1]);
   close(inp);
-
+  close(in_pipes[1]);
+  
   dup2(in_pipes[0],0);
 
   close(in_pipes[0]);
@@ -154,8 +173,8 @@ void execute_prog(prog_info_t* info){
   dup2(err_pipes[1],2);
 
   free(path);
-
-  execl(info->binary,info->binary,NULL);
+  char* args[] = {info->binary, (char*)0x0};
+  execv(info->binary,args);
 
   perror("[excute_prog] - Execution Error\n");
 	exit(1);
@@ -165,47 +184,77 @@ int get_info(prog_info_t* info){
   close(in_pipes[0]);
   close(out_pipes[1]);
   close(err_pipes[1]);
+  close(err_pipes[0]);
   close(in_pipes[1]);
-  
+
+
   ssize_t s;
   char buf[MAX_BUF];
-  FILE *fp = fdopen(out_pipes[0],"r");
+
+  FILE *fp = fdopen(out_pipes[0],"rb");
 
   if(fp == NULL){
     fprintf(stderr,"fdopen failed\n");
     exit(1);
   }
 
-  while(fgets(buf,MAX_BUF,fp)!= NULL){
-    char* ptr;
-    if((ptr = strstr(buf,"guard:"))!= NULL ){
-     
+  int trial = info->trial;
+  int cnt = 0;
+
+  while((fgets(buf,MAX_BUF,fp))!= NULL){
+    cnt++;
+    char* ptr = strstr(buf,"log-function: ");
+
+
+    if(ptr != NULL){
+  
       ptr = strtok(ptr," ");
       ptr = strtok(NULL," ");
-      
+
       if(ptr == NULL){
-	        continue;
-      }
-      
-      int num = atoi(ptr);
-      
-      if(num > info->result_func_num[info->index])
-      {
-        info->result_func_num[info->index] = 2*info->result_func_num[info->index];
-        info->max_size = info->result_func_num[info->index];
-        
-        realloc(info->result[info->index],sizeof(int)*info->result_func_num[info->index]);
-        realloc(info->uni,sizeof(char)*info->result_func_num[info->index]);
+        continue;
       }
 
-      if(info->uni[num] == 0){
-	info->uni[num] = 1;
-      }
+      unsigned index = hash(ptr);
+      
+      function_hit_t* p;
 
-      info->result[info->index][num]++;
-    } 
+      int find = 0;
+      if(info->func_union[trial][index].function_name != NULL){
+
+        for(p = &info->func_union[trial][index]; p->next != NULL; p = p->next){
+          if(strcmp(ptr,p->function_name) == 0){
+            find = 1;
+            p->hit++;
+            break;
+          }
+        }
+
+        if(find == 0){
+          
+          function_hit_t* new = (function_hit_t*)malloc(sizeof(function_hit_t));
+          new->function_name = (char*)malloc(sizeof(char)*strlen(ptr));
+          strcpy(new->function_name,ptr);
+
+          new->hit = 1;
+          new->next = NULL;
+          p->next = new;
+          info->func_size[trial] ++;
+        }
+
+      }else{
+        info->func_union[trial][index].function_name = (char*)malloc(sizeof(char)*strlen(ptr));
+        strcpy(info->func_union[trial][index].function_name,ptr);
+          
+        info->func_union[trial][index].hit = 1;
+        info->func_union[trial][index].next = NULL;
+        info->func_size[trial]++;
+      }
+    }
+    memset(buf,0,sizeof(char)*MAX_BUF);
   }
-  
+
+  fclose(fp);
   close(out_pipes[0]);
   close(err_pipes[0]);
 }
@@ -231,7 +280,7 @@ int run(prog_info_t* info){
 	}
   
   child = fork();
-  
+
   if(child == 0)
   { 
     alarm(1);
@@ -239,34 +288,34 @@ int run(prog_info_t* info){
 
   }else if(child > 0)
   {
-    printf("get info start\n");
     get_info(info);
-    info->index++;
+    info->trial++;
   }else
   {
     fprintf(stderr,"Fork failed\n");
     exit(1);
 
   }
-
+  int ret;
+  wait(&ret);
+  
   return 0;
 }
 
 void info_free(prog_info_t* info){
+
   for(int i = 0; i < info->inputs_num;i++){
     free(info->inputs[i]);
-    free(info->result[i]);
+    free(info->func_union[i]);
   }
-  
-  free(info->uni);
-  free(info->result_func_num);
-  free(info->result);
+   free(info->func_size);
+  free(info->func_union);
   free(info);
 }
 
 void save_result(prog_info_t* info){
 
-
+  
   for(int i = 0; i < info->inputs_num; i++){
 
     int length = strlen(info->out_dir) + strlen(info->inputs[i]) + 6;
@@ -281,34 +330,23 @@ void save_result(prog_info_t* info){
       exit(1);
     }
     
-    int cnt = 0;
     fprintf(fp,"Function,hit\n");
-    
-    for(int j = 0; j < info->result_func_num[i]; j++){
-      if(info->result[i][j] != 0){
-	cnt++;
-        fprintf(fp,"%d,%d\n",j,info->result[i][j]);
+    int max = HASH_SIZE;
+    for(int j = 0; j < max; j++){
+      if(info->func_union[i][j].function_name != NULL){
+     
+        function_hit_t* p;
+        for(p = &info->func_union[i][j]; p != NULL; p = p->next){
+          fprintf(fp,"%s,%d\n",p->function_name,p->hit); 
+        }
+     
       }
     }
-    
-    fprintf(fp,"total,%d\n",cnt);
-    if(i == 0){
-	cnt = 0;
-	for(int j = 0; j < info->max_size; j++){
-		if(info->uni[j] != 0){
-			cnt++;
-		}
-	}
-    }
+    fprintf(fp,"total,%d\n",info->func_size[i]);
     fclose(fp);
-    FILE* fp2 = fopen("union.csv","a+");
-    if(fp2 == NULL){
-	fprintf(stderr,"fopen failed\n");
-    }
-    fprintf(fp2,"union,%d\n",cnt);
-    fclose(fp2);
     free(path);
   }
+  
 }
 
 prog_info_t* info_init(){
@@ -320,20 +358,21 @@ prog_info_t* info_init(){
   memset(new_info->out_dir,0,MAX_ADDR);
 
   new_info->inputs_num = 0;
-  new_info->index = 0;
+  new_info->trial = 0;
+
   return new_info;
 }
 
 int main(int argc,char* argv[]){
   signal(SIGALRM, time_handler);
   
-  prog_info_t* info = info_init();
+  info = info_init();
 
-  init(argc,argv,info);
+  get_option(argc,argv,info);
 	find_input(info);
 
-  while(info->inputs_num > info->index){
-      printf("index: %d\n",info->index);
+  while(info->inputs_num > info->trial){
+      printf("index: %d\n",info->trial);
       run(info);
   }
 
