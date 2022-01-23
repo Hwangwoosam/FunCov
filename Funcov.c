@@ -234,7 +234,7 @@ int get_info(prog_info_t* info){
           
           function_hit_t* new = (function_hit_t*)malloc(sizeof(function_hit_t));
           new->function_name = (char*)malloc(sizeof(char)*strlen(ptr));
-          strcpy(new->function_name,ptr);
+          strncpy(new->function_name,ptr,strlen(ptr)-1);
 
           new->hit = 1;
           new->next = NULL;
