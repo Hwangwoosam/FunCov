@@ -215,34 +215,48 @@ int get_info(prog_info_t* info){
         continue;
       }
 
+      int log_len = strlen(ptr);
+      ptr[log_len-1] = '\0';
+
       unsigned index = hash(ptr);
       
-      function_hit_t* p;
+    
+      function_hit_t* p,*last;
 
       int find = 0;
+
       if(info->func_union[trial][index].function_name != NULL){
 
-        for(p = &info->func_union[trial][index]; p->next != NULL; p = p->next){
+        for(p = &info->func_union[trial][index]; p != NULL; p = p->next){
+
           if(strcmp(ptr,p->function_name) == 0){
             find = 1;
             p->hit++;
             break;
           }
+
+          if(p->next == NULL){
+            last = p;
+          }
         }
 
+        
         if(find == 0){
+          if(index == 108){
           
           function_hit_t* new = (function_hit_t*)malloc(sizeof(function_hit_t));
           new->function_name = (char*)malloc(sizeof(char)*strlen(ptr));
-          strncpy(new->function_name,ptr,strlen(ptr)-1);
+          strcpy(new->function_name,ptr);
 
           new->hit = 1;
           new->next = NULL;
-          p->next = new;
+          last->next = new;
           info->func_size[trial] ++;
+          
         }
 
       }else{
+
         info->func_union[trial][index].function_name = (char*)malloc(sizeof(char)*strlen(ptr));
         strcpy(info->func_union[trial][index].function_name,ptr);
           
@@ -253,6 +267,8 @@ int get_info(prog_info_t* info){
     }
     memset(buf,0,sizeof(char)*MAX_BUF);
   }
+
+  printf("getinfo End\n");
 
   fclose(fp);
   close(out_pipes[0]);
@@ -337,6 +353,7 @@ void save_result(prog_info_t* info){
      
         function_hit_t* p;
         for(p = &info->func_union[i][j]; p != NULL; p = p->next){
+
           fprintf(fp,"%s,%d\n",p->function_name,p->hit); 
         }
      
