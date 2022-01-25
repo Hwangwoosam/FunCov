@@ -20,6 +20,11 @@ static pid_t child;
 
 prog_info_t* info;
 
+int* func_num;
+function_hit_t*** func_individual;
+
+int* uni_num;
+function_hit_t* func_union[MAX_NUM];
 
 void
 time_handler(int sig){
@@ -43,7 +48,27 @@ unsigned hash(char* name){
     hash_val = name[i] + 31*hash_val;
   }
 
-  return hash_val%HASH_SIZE;
+  return hash_val%MAX_NUM;
+}
+
+func_link lookup(char* name,int opt){
+  func_link p;
+  int hash_val = hash(name);
+
+  if(opt == 0){
+    for(p = func_individual[info->trial][hash_val]; p != NULL; p = p->next){
+      if(strcmp(p->function_name,name) == 0){
+          return p;
+      }
+    }
+  }else{
+    for(p = func_union[hash_val]; p != NULL; p = p->next){
+      if(strcmp(p->function_name,name) == 0){
+          return p;
+      }
+    }
+  }
+  return NULL;
 }
 
 void get_option(int argc,char* argv[],prog_info_t* info){
@@ -109,6 +134,20 @@ void get_option(int argc,char* argv[],prog_info_t* info){
   printf("init SUCCESS\n");
 }
 
+prog_info_t* info_init(){
+
+  prog_info_t* new_info = (prog_info_t*)malloc(sizeof(prog_info_t));
+
+  memset(new_info->binary,0,MAX_ADDR);
+  memset(new_info->inp_dir,0,MAX_ADDR);
+  memset(new_info->out_dir,0,MAX_ADDR);
+
+  new_info->inputs_num = 0;
+  new_info->trial = 0;
+
+  return new_info;
+}
+
 void find_input(prog_info_t* info){
   DIR * dir = opendir(info->inp_dir);
   struct dirent * dp;
@@ -121,7 +160,7 @@ void find_input(prog_info_t* info){
   }else{
     
     while(dp = readdir(dir)){
-      if(strcmp(dp->d_name,".") == 0 || strcmp(dp->d_name,"..")==0){
+      if(dp->d_name[0] == '.' || strcmp(dp->d_name,"..")==0){
         continue;
       }
       info->inputs[info->inputs_num] =(char*)malloc(sizeof(char)*dp->d_reclen);
@@ -129,14 +168,21 @@ void find_input(prog_info_t* info){
       info->inputs_num++;
     }
 
-  }
-  info->func_size = (int*)malloc(sizeof(int)*info->inputs_num);
-  info->func_union = (function_hit_t**)malloc(sizeof(function_hit_t*)*info->inputs_num);
+    if(info->inputs_num > MAX_NUM){
+      fprintf(stderr,"too many input files\n");
+      exit(1);
+    }
 
-  for(int i = 0; i < info->inputs_num; i++){
-    info->func_size[i] = 0;
-    info->func_union[i] = (function_hit_t*)calloc(MAX_NUM,sizeof(function_hit_t));
+    func_num = (int*)malloc(sizeof(int)*info->inputs_num);
+    uni_num = (int*)malloc(sizeof(int)*info->inputs_num);
+    func_individual = (function_hit_t***)malloc(sizeof(function_hit_t**)*info->inputs_num);
+    for(int i = 0 ; i < info->inputs_num; i++){
+      uni_num[i] = 0;
+      func_num[i] = 0;
+      func_individual[i] = (function_hit_t**)malloc(sizeof(function_hit_t*)*MAX_NUM);
+    }
   }
+
   printf("Find input SUCCESS\n");
 }
 
@@ -156,8 +202,12 @@ void execute_prog(prog_info_t* info){
   }
 
   while((length = read(inp,buf,MAX_BUF)) > 0){
-    buf[length]='\0';
     int s = write(in_pipes[1],buf,length);
+    
+    while(s <length){
+      s += write(in_pipes[1],buf+s,length-s);
+    }
+
   }
 
   close(inp);
@@ -181,6 +231,7 @@ void execute_prog(prog_info_t* info){
 }
 
 int get_info(prog_info_t* info){
+
   close(in_pipes[0]);
   close(out_pipes[1]);
   close(err_pipes[1]);
@@ -199,76 +250,61 @@ int get_info(prog_info_t* info){
   }
 
   int trial = info->trial;
-  int cnt = 0;
-
   while((fgets(buf,MAX_BUF,fp))!= NULL){
-    cnt++;
+    
     char* ptr = strstr(buf,"log-function: ");
-
-
     if(ptr != NULL){
-  
       ptr = strtok(ptr," ");
       ptr = strtok(NULL," ");
-
-      if(ptr == NULL){
-        continue;
-      }
-
-      int log_len = strlen(ptr);
-      ptr[log_len-1] = '\0';
-
-      unsigned index = hash(ptr);
-      
-    
-      function_hit_t* p,*last;
-
-      int find = 0;
-
-      if(info->func_union[trial][index].function_name != NULL){
-
-        for(p = &info->func_union[trial][index]; p != NULL; p = p->next){
-
-          if(strcmp(ptr,p->function_name) == 0){
-            find = 1;
-            p->hit++;
-            break;
-          }
-
-          if(p->next == NULL){
-            last = p;
-          }
-        }
-
+      if(ptr != NULL){
+        func_link p;
+        int hash_val;
         
-        if(find == 0){
-          if(index == 108){
-          
-          function_hit_t* new = (function_hit_t*)malloc(sizeof(function_hit_t));
-          new->function_name = (char*)malloc(sizeof(char)*strlen(ptr));
-          strcpy(new->function_name,ptr);
+        int ptr_len = strlen(ptr);
 
-          new->hit = 1;
-          new->next = NULL;
-          last->next = new;
-          info->func_size[trial] ++;
-          
+        for(int i = 0; i < ptr_len; i++){
+          if(i == ptr_len-1){
+            ptr[i] = '\0';
+          }
         }
-
-      }else{
-
-        info->func_union[trial][index].function_name = (char*)malloc(sizeof(char)*strlen(ptr));
-        strcpy(info->func_union[trial][index].function_name,ptr);
+        
+        if((p = lookup(ptr,0)) == NULL){
           
-        info->func_union[trial][index].hit = 1;
-        info->func_union[trial][index].next = NULL;
-        info->func_size[trial]++;
+          p = (func_link)malloc(sizeof(function_hit_t));
+          
+          hash_val = hash(ptr);
+          p->function_name = (char*)malloc(sizeof(char)*(ptr_len));
+          
+          strcpy(p->function_name,ptr);
+          p->hit = 1;
+
+          p->next = func_individual[trial][hash_val];
+          func_individual[trial][hash_val] = p;
+          func_num[trial]++;
+
+          func_link p_u;
+          if((p_u = lookup(ptr,1)) == NULL){
+            p_u = (func_link)malloc(sizeof(function_hit_t));
+            p_u->function_name = (char*)malloc(sizeof(char)*ptr_len);
+            strcpy(p_u->function_name,ptr);
+
+            p_u->next = func_union[hash_val];
+            func_union[hash_val] = p_u;
+            uni_num[trial]++;
+          }
+        
+        }else{
+          p->hit++;
+        }
       }
     }
+
     memset(buf,0,sizeof(char)*MAX_BUF);
   }
 
-  printf("getinfo End\n");
+  if(trial > 0){
+    uni_num[trial] += uni_num[trial-1];
+  }
 
   fclose(fp);
   close(out_pipes[0]);
@@ -319,27 +355,56 @@ int run(prog_info_t* info){
 }
 
 void info_free(prog_info_t* info){
-
+  func_link p;
   for(int i = 0; i < info->inputs_num;i++){
     free(info->inputs[i]);
-    free(info->func_union[i]);
+    for(int j = 0; j < MAX_NUM; j++){
+      p = func_individual[i][j];
+      while(p != NULL ){
+        func_link fr = p;
+        p = p->next;
+        free(fr);
+      }
+    }
+    free(func_individual[i]);
   }
-   free(info->func_size);
-  free(info->func_union);
+  for(int i = 0; i < MAX_NUM; i++){
+    p = func_union[i];
+    while(p != NULL){
+      func_link fr = p;
+      p = p->next;
+      free(fr);
+    }
+  }
+  free(uni_num);
+  free(func_individual);
   free(info);
 }
 
 void save_result(prog_info_t* info){
+  int output_len = strlen(info->out_dir);
+  int union_len = output_len + 11;
 
+  char* path2 = (char*)malloc(sizeof(char)*union_len);
+
+  sprintf(path2,"%s/union.csv",info->out_dir);
+  FILE* fp2 = fopen(path2,"w+");
+
+  if(fp2 == NULL){
+    fprintf(stderr,"fopen failed\n");
+    exit(1);
+  }
+
+  fprintf(fp2,"trial,func_cov\n");
   
   for(int i = 0; i < info->inputs_num; i++){
 
-    int length = strlen(info->out_dir) + strlen(info->inputs[i]) + 6;
+    int length = output_len + strlen(info->inputs[i]) + 6;
     char* path = (char*)malloc(sizeof(char)*length);
     sprintf(path,"%s/%s.csv",info->out_dir,info->inputs[i]);
 
     FILE* fp = fopen(path,"wb");
-    
+
     if(fp == NULL)
     {
       fprintf(stderr,"fopen failed\n");
@@ -347,38 +412,21 @@ void save_result(prog_info_t* info){
     }
     
     fprintf(fp,"Function,hit\n");
-    int max = HASH_SIZE;
-    for(int j = 0; j < max; j++){
-      if(info->func_union[i][j].function_name != NULL){
-     
-        function_hit_t* p;
-        for(p = &info->func_union[i][j]; p != NULL; p = p->next){
-
-          fprintf(fp,"%s,%d\n",p->function_name,p->hit); 
-        }
-     
+    int max = MAX_NUM;
+    for(int j = 0; j < MAX_NUM; j++){
+      func_link p;
+      for(p = func_individual[i][j]; p != NULL; p = p->next){
+        fprintf(fp,"%s,%d\n",p->function_name,p->hit);
       }
     }
-    fprintf(fp,"total,%d\n",info->func_size[i]);
+    fprintf(fp2,"%d,%d\n",i,uni_num[i]);
+    fprintf(fp,"total,%d\n",func_num[i]);
     fclose(fp);
     free(path);
   }
-  
+  fclose(fp2);
 }
 
-prog_info_t* info_init(){
-
-  prog_info_t* new_info = (prog_info_t*)malloc(sizeof(prog_info_t));
-
-  memset(new_info->binary,0,MAX_ADDR);
-  memset(new_info->inp_dir,0,MAX_ADDR);
-  memset(new_info->out_dir,0,MAX_ADDR);
-
-  new_info->inputs_num = 0;
-  new_info->trial = 0;
-
-  return new_info;
-}
 
 int main(int argc,char* argv[]){
   signal(SIGALRM, time_handler);
@@ -394,6 +442,10 @@ int main(int argc,char* argv[]){
   }
 
   save_result(info);
+
+  for(int i = 0; i < info->inputs_num; i++){
+    printf("%d, %s\n",i,info->inputs[i]);
+  }
   info_free(info);
 
   return 0; 
