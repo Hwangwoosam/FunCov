@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <sanitizer/coverage_interface.h>
-#include "Funcov.h"
+#include "Funcov_shared.h"
 
 void __sanitizer_cov_trace_pc_guard_init(uint32_t *start,uint32_t *stop) {
   static uint64_t N;  // Counter for the guards.

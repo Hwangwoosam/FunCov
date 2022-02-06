@@ -12,7 +12,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "Funcov.h"
+#include "Funcov_shared.h"
 
 static pid_t child;
 
