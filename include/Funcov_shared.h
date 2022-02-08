@@ -27,9 +27,4 @@ typedef struct prog_info{
 
 }prog_info_t;
 
-// typedef struct SHM_info{
-//     function_hit_t func_union[HASH_SIZE][20];
-//     int func_num[HASH_SIZE];
-// }SHM_info_t;
-
 #endif
