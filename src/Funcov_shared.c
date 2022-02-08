@@ -12,8 +12,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "Funcov_shared.h"
-#include "shared_memory.h"
+#include "../include/Funcov_shared.h"
+#include "../include/shared_memory.h"
 static pid_t child;
 
 static int in_pipes[2] ;

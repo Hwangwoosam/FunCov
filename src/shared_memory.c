@@ -4,8 +4,8 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
-#include "Funcov_shared.h"
-#include "shared_memory.h"
+#include "../include/Funcov_shared.h"
+#include "../include/shared_memory.h"
 
 unsigned hash(char* name){
   unsigned hash_val = 0;
