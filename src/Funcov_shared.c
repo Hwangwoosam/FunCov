@@ -12,8 +12,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "../include/Funcov_shared.h"
-
+#include "Funcov_shared.h"
+#include "shared_memory.h"
 static pid_t child;
 
 static int in_pipes[2] ;
@@ -39,18 +39,6 @@ time_handler(int sig){
 		perror("timeout ");
 		kill(child, SIGINT);
 	}
-}
-
-unsigned hash(char* name){
-  unsigned hash_val = 0;
-  
-  int length = strlen(name);
-  
-  for(int i = 0; i < length; i++){
-    hash_val = name[i] + 31*hash_val;
-  }
-
-  return hash_val%HASH_SIZE;
 }
 
 void usage(){
@@ -133,40 +121,6 @@ prog_info_t* info_init(){
   new_info->trial = 0;
 
   return new_info;
-}
-
-void shm_alloc(){
-  shmid = shmget((key_t)SHM_KEY,sizeof(SHM_info_t),IPC_CREAT|IPC_EXCL|0666);
-
-  if(shmid == -1){
-    fprintf(stderr,"SHM exist!!\n");
-    exit(1);
-  }
-
-  shared_memory = shmat(shmid,(void*)0,0);
-  shm_info =(SHM_info_t*) shared_memory;
-
-  memset(shm_info,0,sizeof(SHM_info_t));
-
-  printf("shm alloc end\n");
-}
-
-void shm_dettach(){
-  
-  if(shmdt(shm_info) == -1){
-      fprintf(stderr,"Shmdt failed\n");
-      exit(1);
-  }
-
-}
-
-void shm_dealloc(){
-
-  if(shmctl(shmid,IPC_RMID,0) == -1){
-      fprintf(stderr,"Shmctl failed\n");
-      exit(1);
-  }
-
 }
 
 void find_input(prog_info_t* info){
@@ -315,7 +269,7 @@ void save_result(){
   for(int i = 0; i < info->inputs_num; i++){
 
     char* path_indiv = (char*)malloc(sizeof(char)*MAX_ADDR);
-    sprintf(path_indiv,"%s/%s",info->out_dir,info->inputs[i]);
+    sprintf(path_indiv,"%s/%s.csv",info->out_dir,info->inputs[i]);
     
     FILE* fp_idv = fopen(path_indiv,"w+");
     
@@ -377,7 +331,12 @@ int main(int argc,char* argv[]){
   get_option(argc,argv,info);
   find_input(info);
 
-  shm_alloc();
+  shmid = shm_alloc(0);
+  
+  shared_memory = shmat(shmid,(void*)0,0);
+  shm_info =(SHM_info_t*) shared_memory;
+
+  memset(shm_info,0,sizeof(SHM_info_t));
 
   int ret ;
   while(info->inputs_num > info->trial){
@@ -394,8 +353,8 @@ int main(int argc,char* argv[]){
   }
   wait(&ret);
   
-  shm_dettach();
-  shm_dealloc();
+  shm_dettach(shm_info);
+  shm_dealloc(shmid);
 
   save_result();
 

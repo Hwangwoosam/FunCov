@@ -6,8 +6,6 @@
 #define MAX_NUM 1000
 #define HASH_SIZE 6000
 
-#define SHM_KEY 5555
-
 typedef struct function_hit* func_link;
 
 typedef struct function_hit{
@@ -29,9 +27,9 @@ typedef struct prog_info{
 
 }prog_info_t;
 
-typedef struct SHM_info{
-    function_hit_t func_union[HASH_SIZE][20];
-    int func_num[HASH_SIZE];
-}SHM_info_t;
+// typedef struct SHM_info{
+//     function_hit_t func_union[HASH_SIZE][20];
+//     int func_num[HASH_SIZE];
+// }SHM_info_t;
 
 #endif
