@@ -5,5 +5,6 @@ Funcov is a tool to measure the function coverage of a program by using LLVM San
 ------------------------------------
 ```bash  
   $git clone https://github.com/Hwangwoosam/FunCov.git
+  $cd FunCov
   $make
 ```
