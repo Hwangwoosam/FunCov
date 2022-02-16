@@ -32,3 +32,9 @@
 # If there is no argument about the output directory, the directory called output is set as a default value. 
 ```
 ### 3. Result directory
+
+* **coverage/** : This directory stores the function coverage for each input.
+* **union.csv** : This file stores the function coverage for the entire input.
+
+<img width="498" alt = "image" src="https://user-images.githubusercontent.com/61729954/154293590-7ef9b8e4-3a1f-48ff-8da7-f1d4edca936a.png">
+
