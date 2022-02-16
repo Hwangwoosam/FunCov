@@ -21,7 +21,7 @@
 
 ### 2. Execute Funcov
 ```bash
-  $./funcov_m -i [input_dir] -o [output_dir] -b [binary file]
+# usage: ./funcov_m -i [input_dir] -o [output_dir] -b [binary file]
 
 # required
 # -i : input directory path
