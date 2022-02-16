@@ -11,26 +11,29 @@
 #include <regex.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <execinfo.h>
 
-#include "../include/Funcov_shared.h"
-#include "../include/shared_memory.h"
+#include "Funcov_shared.h"
+#include "shared_memory.h"
+
+
 static pid_t child;
 
 static int in_pipes[2] ;
 static int out_pipes[2] ;
 static int err_pipes[2] ;
 
-prog_info_t* info;
+prog_info_t* prog_info;
 
-SHM_info_t* fun_cov;
 SHM_info_t* shm_info = NULL;
 
-char* fun_cov_union[HASH_SIZE][200];
-int union_func_num[HASH_SIZE];
+indiv_coverage_t* indiv_coverage;
+union_coverage_t  union_coverage;
+
+int* table_trans;
 int union_cnt;
 
 void * shared_memory = (void*) 0;
-
 int shmid;
 
 void
@@ -41,75 +44,81 @@ time_handler(int sig){
 	}
 }
 
-void usage(){
-  printf("  ===========input format============\n"); 
-  printf("funcov -b [excute_binary path] -i [inp-dir path] -o [output-dir path]\n");
-}
-
-void get_option(int argc,char* argv[],prog_info_t* info){
+int get_option(int argc,char* argv[],prog_info_t* prog_info){
   int c;
   int inp_flag = 0,b_flag =0,out_flag = 0;
 
   while( (c= getopt(argc,argv,"b:i:o:")) != -1){
+
     switch (c)
     {
-
     case 'b':
-      b_flag = 1;
       if(access(optarg,X_OK) == 0){
-        memcpy(info->binary,optarg,strlen(optarg));
-      }else{
+        memcpy(prog_info->binary,optarg,strlen(optarg));  
+      }
+      else{
         fprintf(stderr,"Wrong binary path\n");
-        exit(1);
+        return 1;
       }
+
+      b_flag = 1;
       break;
-      
-    case 'i':
-      inp_flag = 1;
+
+    case 'i':  
       if(access(optarg,X_OK) == 0){
-        memcpy(info->inp_dir,optarg,strlen(optarg));
-      }else{
-        fprintf(stderr,"Wrong input directory path\n");
-        exit(1);
+        memcpy(prog_info->inp_dir,optarg,strlen(optarg));  
       }
+      else{
+        fprintf(stderr,"Wrong input directory path\n");
+        return 1;
+      }
+
+      inp_flag = 1;
       break;
 
     case 'o':
-      out_flag = 1;
+
       if(access(optarg,X_OK) == 0){
-        memcpy(info->out_dir,optarg,strlen(optarg));
-      }else{
-        fprintf(stderr,"Wrong output directory path\n");
-        exit(1);
+        memcpy(prog_info->out_dir,optarg,strlen(optarg));  
       }
+      else{
+        fprintf(stderr,"Wrong output directory path\n");
+        return 1;
+      }
+
+      out_flag = 1;
       break;
 
     default:
-      usage();
-      exit(1);
-      break;
+      goto print_usage;
     }
   }
 
   if(inp_flag == 0 || b_flag == 0){
     fprintf(stderr,"input binary path and input directory path\n");
-    usage();
-    exit(1);
+    goto print_usage;
   }
 
   if(out_flag == 0){
-    sprintf(info->out_dir,"./output");
-    if(mkdir(info->out_dir,0776) != 0){
-      free(info);
+    sprintf(prog_info->out_dir,"./output");
+
+    if(mkdir(prog_info->out_dir,0776) != 0)
+    {
+      free(prog_info);
       fprintf(stderr,"failed to create output directory\n");
-      exit(1);
+      return 1;
     }
   }
-  
-  printf("init SUCCESS\n");
+
+  return 0;
+
+print_usage:
+  printf("  ===========input format============\n"); 
+  printf("funcov -b [excute_binary path] -i [inp-dir path] -o [output-dir path]\n");
+  return 1;
 }
 
-prog_info_t* info_init(){
+prog_info_t* prog_info_init(){
 
   prog_info_t* new_info = (prog_info_t*)malloc(sizeof(prog_info_t));
 
@@ -123,61 +132,127 @@ prog_info_t* info_init(){
   return new_info;
 }
 
-void find_input(prog_info_t* info){
-  DIR * dir = opendir(info->inp_dir);
+int find_input(prog_info_t* prog_info){
+  DIR * dir = opendir(prog_info->inp_dir);
   struct dirent * dp;
   
   if(dir == NULL){
 
     fprintf(stderr,"opendir failed\n");
-    exit(1);
-  
+    return 1;
+
   }else{
     
     while(dp = readdir(dir)){
+      
       if(dp->d_name[0] == '.' || strcmp(dp->d_name,"..")==0){
         continue;
       }
-      info->inputs[info->inputs_num] =(char*)malloc(sizeof(char)*(dp->d_reclen+1));
-      strcpy(info->inputs[info->inputs_num],dp->d_name);
-      info->inputs_num++;
+
+      prog_info->inputs[prog_info->inputs_num] =(char*)malloc(sizeof(char)*(dp->d_reclen+1));
+      strcpy(prog_info->inputs[prog_info->inputs_num],dp->d_name);
+      
+      prog_info->inputs_num++;
     }
 
-    if(info->inputs_num > MAX_NUM){
+    closedir(dir);
+
+    if(prog_info->inputs_num > MAX_NUM)
+    {
       fprintf(stderr,"too many input files\n");
-      exit(1);
+      return 1;
     }
 
   }
-  fun_cov = (SHM_info_t*)malloc(sizeof(SHM_info_t)*(info->inputs_num));
 
-  printf("Find input SUCCESS\n");
+  indiv_coverage = (indiv_coverage_t*)malloc(sizeof(indiv_coverage_t)*prog_info->inputs_num);
+
+  return 0;
 }
 
-void execute_prog(prog_info_t* info){
+void get_coverage(int trial){
+
+  indiv_coverage[trial].func_list = (int*)malloc(sizeof(int)*shm_info->cnt);
+  indiv_coverage[trial].hit_cnt = (int*)malloc(sizeof(int)*shm_info->cnt);
+  indiv_coverage[trial].func_cnt = shm_info->cnt;
+
+  int idv_cnt = 0;
+
+  for(int i = 0; i < HASH_SIZE; i++){
+    
+    if(shm_info->func_coverage[i].hit_cnt == 0){
+      continue;
+    }else{
+
+      int idx = i;
+      int length = strlen(shm_info->func_coverage[i].func_line);
+      
+      do
+      { 
+        if(union_coverage.total_coverage[idx] == NULL){
+
+          indiv_coverage[trial].func_list[idv_cnt] = idx;
+          indiv_coverage[trial].hit_cnt[idv_cnt] = shm_info->func_coverage[i].hit_cnt;
+          idv_cnt++;
+
+          union_coverage.total_coverage[idx] = (char*)malloc(sizeof(char)*(length+1));
+          strcpy(union_coverage.total_coverage[idx],shm_info->func_coverage[i].func_line);
+          union_cnt++;
+
+          break;
+        }else{
+          if(strcmp(shm_info->func_coverage[i].func_line,union_coverage.total_coverage[idx]) == 0){
+            
+            indiv_coverage[trial].func_list[idv_cnt] = idx;
+            indiv_coverage[trial].hit_cnt[idv_cnt] = shm_info->func_coverage[i].hit_cnt;
+            idv_cnt++;
+
+            break;
+          }
+        }
+
+        if(idx + 1 >= HASH_SIZE){
+          idx = 0;
+        }
+
+        idx++;
+
+      }while(idx != i);
+
+    }
+  } 
+  indiv_coverage[trial].union_cnt = union_cnt;
+}
+
+void execute_prog(prog_info_t* prog_info){
+  alarm(5);
   int inp;
-  int path_length = strlen(info->inp_dir) + strlen(info->inputs[info->trial]) + 2;
+  int path_length = strlen(prog_info->inp_dir) + strlen(prog_info->inputs[prog_info->trial]) + 2;
   
   char* path = (char*)malloc(sizeof(char)*path_length);
-  sprintf(path,"%s/%s",info->inp_dir,info->inputs[info->trial]);
-
-  ssize_t length;
-  char buf[MAX_BUF];
+  sprintf(path,"%s/%s",prog_info->inp_dir,prog_info->inputs[prog_info->trial]);
 
   if( (inp = open(path,O_RDONLY)) == -1){
     fprintf(stderr,"input file open failed\n");
     exit(1);
   }
 
+  ssize_t length;
+  char buf[MAX_BUF];
+
   while((length = read(inp,buf,MAX_BUF)) > 0){
+    
     int s = write(in_pipes[1],buf,length);
-    while(s <length){
+    
+    while(s <length)
+    {
       s += write(in_pipes[1],buf+s,length-s);
     }
 
   }
-  
   close(inp);
+  free(path);
+
   close(in_pipes[1]);
   
   dup2(in_pipes[0],0);
@@ -188,42 +263,28 @@ void execute_prog(prog_info_t* info){
 
   dup2(out_pipes[1],1);
   dup2(err_pipes[1],2);
-
-  free(path);
-  char* args[] = {info->binary, (char*)0x0};
-  execv(info->binary,args);
-
-  perror("[excute_prog] - Execution Error\n");
-	exit(1);
-}
-
-int run(){
-
-  if(pipe(in_pipes) != 0)
-  {
-    fprintf(stderr,"In Pipe Error\n");
-    exit(1);
+  
+  char* args[] = {prog_info->binary, (char*)0x0};
+  
+  if(execv(prog_info->binary,args) == -1){
+    perror("[excute_prog] - Execution Error\n");
+  	exit(1);
   }
 
-  if (pipe(out_pipes) != 0) 
-  {
-		perror("OUT Pipe Error\n") ;
-		exit(1) ;
-	}
+}
 
-	if (pipe(err_pipes) != 0) 
-  {
-		perror("ERR Pipe Error\n") ;
-		exit(1) ;
-	}
+int run(prog_info_t* prog_info){
+
+  if (pipe(in_pipes) != 0) goto pipe_err;
+  if (pipe(out_pipes) != 0) goto pipe_err;
+	if (pipe(err_pipes) != 0) goto pipe_err;
 
   child = fork();
 
   int ret ;
 
   if(child == 0){
-    // alarm(1);
-    execute_prog(info);
+    execute_prog(prog_info);
 
   }else if(child > 0){
     close(in_pipes[0]);
@@ -232,137 +293,205 @@ int run(){
     close(err_pipes[1]);
     close(out_pipes[0]);
     close(out_pipes[1]);
+
     wait(&ret);
+
+    get_coverage(prog_info->trial);
+
   }else{
-    fprintf(stderr,"Fork failed\n");
-    exit(1);
+    goto fork_err;    
   }
 
   return ret;
+
+pipe_err:
+  fprintf(stderr,"(RUN) Pipe error\n");
+  goto exit;
+
+fork_err:
+  fprintf(stderr,"(RUN) Fork error\n");
+  goto exit;
+
+exit:
+  shm_dealloc(shmid);
+  exit(1);
 }
 
-void print_func(){
-  int cnt = 0;
+
+void save_result(){
+  int out_dir_len = strlen(prog_info->out_dir);
+  
+  char* union_path = (char*)malloc(sizeof(char)*(out_dir_len +10));
+  
+  sprintf(union_path,"%s/union.csv",prog_info->out_dir);
+  
+  FILE* fp = fopen(union_path,"w+");
+
+  fprintf(fp,"trial,func_cnt\n");  
+  for(int i = 0; i < prog_info->inputs_num; i++){
+
+    int idv_result_len = strlen(prog_info->inputs[i]);
+
+    char* idv_path = (char*)malloc(sizeof(char)*(out_dir_len + idv_result_len + 6));
+    sprintf(idv_path,"%s/%s.csv",prog_info->out_dir,prog_info->inputs[i]);
+
+    FILE* fp2 = fopen(idv_path,"w+");
+    fprintf(fp2,"callee,caller,caller_line,hit,line number\n");
+    for(int j = 0; j < indiv_coverage[i].func_cnt; j++){
+      
+      int idx = indiv_coverage[i].func_list[j];
+
+      fprintf(fp2,"%s,%d,%s",union_coverage.total_coverage[idx],indiv_coverage[i].hit_cnt[j],union_coverage.line_number[idx]);
+
+    }
+    fclose(fp2);
+    fprintf(fp,"%d,%d\n",i,indiv_coverage[i].union_cnt);
+    free(idv_path);
+  }
+  fclose(fp);
+  free(union_path);
+}
+
+void translate_addr(){
+  
+  char** argv = (char**)malloc(sizeof(char*)*(union_cnt + 4));
+  table_trans = (int*)malloc(sizeof(int) * union_cnt);
+
+  argv[0] = (char*)malloc(sizeof(char)*MAX_ADDR);
+  strcpy(argv[0],"/usr/bin/addr2line");
+
+  argv[1] = (char*)malloc(sizeof(char)*4);
+  strcpy(argv[1],"-e");
+
+  argv[2] = (char*)malloc(sizeof(char)*MAX_ADDR);
+  strcpy(argv[2],prog_info->binary);
+
+  argv[union_cnt+3] = (char*)0x0;
+
+  int index = 0;
   for(int i = 0; i < HASH_SIZE; i++){
-    for(int j = 0; j < fun_cov[info->trial].func_num[i]; j++){
-      // printf("%s\n",fun_cov[info->trial].func_union[i][j].func_line);
-      cnt++;
+    if(union_coverage.total_coverage[i] != NULL){
+
+          
+      table_trans[index] = i;
+      int len = strlen(union_coverage.total_coverage[i]);
+      int addr2_cnt = 0;
+      for(int j = 0; j < len; j++){
+        if(union_coverage.total_coverage[i][j] == ','){
+          addr2_cnt++;
+          if(addr2_cnt == 2){
+            argv[index + 3] = &union_coverage.total_coverage[i][j+1];
+            break;
+          } 
+        }
+      }
+
+      index ++;
     }
   }
 
-  printf("cnt: %d\n",cnt);
-}
-
-void save_result(){
-  char* path_union = (char*)malloc(sizeof(char)*MAX_ADDR);
-  sprintf(path_union,"%s/union.csv",info->out_dir);
-
-  FILE* fp_union = fopen(path_union,"w+");
-
-  if(fp_union == NULL){
-    fprintf(stderr,"union file fopen failed\n");
+  if(pipe(out_pipes) != 0){
+    perror("Out Pipe Error\n");
     exit(1);
   }
 
-  fprintf(fp_union,"trial,func_cov\n");
+  pid_t addr2line;
+  addr2line = fork();
+  int ret;
+  if(addr2line == 0){
+    close(out_pipes[0]);
+    dup2(out_pipes[1],1);
 
-  for(int i = 0; i < info->inputs_num; i++){
+    execv(argv[0],argv);
+    printf("execv failed\n");
+  }else if(addr2line > 0){
+    close(out_pipes[1]);
+    wait(&ret);
 
-    char* path_indiv = (char*)malloc(sizeof(char)*MAX_ADDR);
-    sprintf(path_indiv,"%s/%s.csv",info->out_dir,info->inputs[i]);
-    
-    FILE* fp_idv = fopen(path_indiv,"w+");
-    
-    if(fp_idv == NULL){
-      fprintf(stderr,"idv fopen failed\n");
+    FILE * fp = fdopen(out_pipes[0],"rb");
+    if(fp == 0x0){
+      perror("translate failed\n");
       exit(1);
     }
-    fprintf(fp_idv,"callee:caller:caller,line_number\n");
-    for(int j = 0; j < HASH_SIZE; j++){
 
-      for(int k = 0; k < fun_cov[i].func_num[j]; k++){
-        fprintf(fp_idv,"%s,%d\n",fun_cov[i].func_union[j][k].func_line,fun_cov[i].func_union[j][k].hit);
-        int length = strlen(fun_cov[i].func_union[j][k].func_line);
-
-
-        if(union_func_num[j] == 0){
-          fun_cov_union[j][0] = (char*)malloc(sizeof(char)*(length + 1));
-          strcpy(fun_cov_union[j][0],fun_cov[i].func_union[j][k].func_line);
-
-          union_func_num[j]++;
-          union_cnt++;
-        }else{
-          int find = 0;
-          int idx = union_func_num[j];
-
-          for(int l = 0; l < idx; l++){
-            if(strcmp(fun_cov_union[j][l],fun_cov[i].func_union[j][k].func_line) == 0){
-              find = 1;
-              break;
-            }
-          }
-
-          if(find == 0){
-            fun_cov_union[j][idx] = (char*)malloc(sizeof(char)*(length + 1));
-            strcpy(fun_cov_union[j][idx],fun_cov[i].func_union[j][k].func_line);
-
-            union_func_num[j]++;
-            union_cnt++;
-          }
-
-        }
-
-      }
-
+    char buf[MAX_BUF];
+    int number = 0;
+    while(fgets(buf,MAX_BUF,fp) != 0x0){
+      union_coverage.line_number[table_trans[number]] = (char*)malloc(sizeof(char)*(strlen(buf) + 1));
+      strcpy(union_coverage.line_number[table_trans[number]],buf);
+      number++;
     }
 
-    fclose(fp_idv);
-    free(path_indiv);
-    fprintf(fp_union,"%d,%d\n",i,union_cnt);
+  }else{
+    fprintf(stderr,"fork error\n");
+    exit(1);
   }
 
-  fclose(fp_union);
-  free(path_union);
+  free(argv);
+  free(table_trans);
+
+}
+
+void free_all(){
+   for(int i = 0; i < prog_info->inputs_num; i++){
+    free(indiv_coverage[i].func_list);
+    free(indiv_coverage[i].hit_cnt);
+    free(prog_info->inputs[i]);
+  }
+
+  for(int i = 0; i < HASH_SIZE; i++){
+    if(union_coverage.total_coverage[i] != NULL){
+      free(union_coverage.total_coverage[i]);
+    }
+  }
+
+  free(indiv_coverage);
+  free(prog_info);
 }
 
 int main(int argc,char* argv[]){
-  info = info_init();
 
-  get_option(argc,argv,info);
-  find_input(info);
+  prog_info = prog_info_init();
+
+  if(get_option(argc,argv,prog_info)){
+    fprintf(stderr,"Wrong option\n");
+    exit(1);
+  }
+
+  if(find_input(prog_info)){
+    fprintf(stderr,"Wrong input files\n");
+    exit(1);
+  }
 
   shmid = shm_alloc(0);
   
-  shared_memory = shmat(shmid,(void*)0,0);
-  shm_info =(SHM_info_t*) shared_memory;
-
-  memset(shm_info,0,sizeof(SHM_info_t));
-
-  int ret ;
-  while(info->inputs_num > info->trial){
-
-    printf("trial: %d\n",info->trial);
-    ret = run();
-
-    memcpy(&fun_cov[info->trial],shm_info,sizeof(SHM_info_t));
-    print_func();
+  if(shmid == -1)
+  {
+    fprintf(stderr,"There already exists Shared memory\n");
+    exit(1);
+  }else{
+    shared_memory = shmat(shmid,(void*)0,0);
+    shm_info =(SHM_info_t*) shared_memory;
 
     memset(shm_info,0,sizeof(SHM_info_t));
-    info->trial++;
-
   }
-  wait(&ret);
-  
+
+  while(prog_info->inputs_num > prog_info->trial){
+
+    printf("trial: %d\n",prog_info->trial);
+    int ret = run(prog_info);
+
+    memset(shm_info,0,sizeof(SHM_info_t));
+    prog_info->trial++;
+  }
+
   shm_dettach(shm_info);
   shm_dealloc(shmid);
 
+  translate_addr();
   save_result();
 
-  for(int i = 0; i < HASH_SIZE; i++){
-    for(int j = 0; j < union_func_num[i]; j++){
-      free(fun_cov_union[i][j]);
-    }
-  }
+  free_all();
 
   return 0; 
 }
