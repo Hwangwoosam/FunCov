@@ -1,4 +1,4 @@
-# FunCov
+## FunCov
   Funcov is a tool to measure function pair coverage using LLVM Sanitizer Coverage.
   Function pair coverage consists of callee function, caller function, and called location.
 
