@@ -19,7 +19,7 @@
   $clang -rdynamic -g -fsanitize=address -fsanitize-coverage=func,trace-pc-guard execute_file_name trace-pc-guard.o
 ```
 
-### 2. Execute Funcov
+### 2. Execute 'Funcov'
 ```bash
 # usage: ./funcov_m -i [input_dir] -o [output_dir] -b [binary file]
 
@@ -31,3 +31,4 @@
 # -o : output directory path
 # If there is no argument about the output directory, the directory called output is set as a default value. 
 ```
+### 3. Result directory
