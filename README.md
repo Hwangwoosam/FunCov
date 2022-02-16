@@ -18,3 +18,16 @@
 ```bash
   $clang -rdynamic -g -fsanitize=address -fsanitize-coverage=func,trace-pc-guard execute_file_name trace-pc-guard.o
 ```
+
+### 2. Execute Funcov
+```bash
+  $./funcov_m -i [input_dir] -o [output_dir] -b [binary file]
+
+# required
+# -i : input directory path
+# -b : executable binary path 
+
+# optional
+# -o : output directory path
+# If there is no argument about the output directory, the directory called output is set as a default value. 
+```
