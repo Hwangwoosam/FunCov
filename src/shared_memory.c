@@ -4,32 +4,31 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
-#include "../include/Funcov_shared.h"
-#include "../include/shared_memory.h"
+#include "Funcov_shared.h"
+#include "shared_memory.h"
 
-unsigned hash(char* name){
+unsigned short hash(char* name){
   unsigned hash_val = 0;
   
   int length = strlen(name);
   
   for(int i = 0; i < length; i++){
-    hash_val = name[i] + 31*hash_val;
+    hash_val = (unsigned char)name[i] + 23131*hash_val;
   }
 
-  return hash_val%HASH_SIZE;
+  return (hash_val&0xffff);
 }
 
 int shm_alloc(int opt){
   int shmid = shmget((key_t)SHM_KEY,sizeof(SHM_info_t),IPC_CREAT|IPC_EXCL|0666);
   
   if(shmid == -1){
+
     if(opt == 0){
-      fprintf(stderr,"SHM exist!!\n");
-    
       shmid = shmget((key_t)SHM_KEY,sizeof(SHM_info_t),IPC_CREAT|0666);
       shm_dealloc(shmid);
 
-      exit(1);
+      return -1;
     }else{
       shmid = shmget((key_t)SHM_KEY,sizeof(SHM_info_t),IPC_CREAT|0666);
     }
