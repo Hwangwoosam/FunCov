@@ -4,7 +4,7 @@
 
   This tool implements the function before adding the function coverage measurement function to AFL++.
 
-#How to build
+## How to build
 ------------------------------------
 ```bash  
   $git clone https://github.com/Hwangwoosam/FunCov.git
@@ -12,7 +12,7 @@
   $make
 ```
 
-#Example
+## Example
 -----------------------------------
 ### 1. To use this tool, compile the object file of trace-pc-guard.c with the target program to be tested and the -rdynamic and -g options.
 ```bash
