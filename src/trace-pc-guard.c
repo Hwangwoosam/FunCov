@@ -8,8 +8,8 @@
 #include "regex.h"
 #include "sys/types.h"
 #include <sanitizer/coverage_interface.h>
-#include "../Funcov_shared.h"
-#include "../shared_memory.h"
+#include "../include/Funcov_shared.h"
+#include "../include/shared_memory.h"
 
 int shmid;
 SHM_info_t* shm_info = NULL;

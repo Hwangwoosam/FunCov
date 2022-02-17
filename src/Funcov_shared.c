@@ -13,8 +13,8 @@
 #include <unistd.h>
 #include <execinfo.h>
 
-#include "Funcov_shared.h"
-#include "shared_memory.h"
+#include "../include/Funcov_shared.h"
+#include "../include/shared_memory.h"
 
 
 static pid_t child;
