@@ -16,7 +16,7 @@
 -----------------------------------
 ### 1. To use this tool, compile the object file of trace-pc-guard.c with the target program to be tested and the -rdynamic and -g options.
 ```bash
-  $clang -rdynamic -g -fsanitize=address -fsanitize-coverage=func,trace-pc-guard execute_file_name trace-pc-guard.o
+  $clang -rdynamic -g -fsanitize=address -fsanitize-coverage=func,trace-pc-guard execute_file_name trace-pc-guard.o shared_memory.o
 ```
 
 ### 2. Execute `Funcov`
