@@ -7,18 +7,6 @@
 #include "../include/Funcov_shared.h"
 #include "../include/shared_memory.h"
 
-unsigned short hash(char* name){
-  unsigned hash_val = 0;
-  
-  int length = strlen(name);
-  
-  for(int i = 0; i < length; i++){
-    hash_val = (unsigned char)name[i] + 23131*hash_val;
-  }
-
-  return (hash_val&0xffff);
-}
-
 int shm_alloc(int opt){
   int shmid = shmget((key_t)SHM_KEY,sizeof(SHM_info_t),IPC_CREAT|IPC_EXCL|0666);
   
