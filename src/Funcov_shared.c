@@ -110,6 +110,20 @@ int get_option(int argc,char* argv[],prog_info_t* prog_info){
     }
   }
 
+  char* idv = (char*)malloc(sizeof(char)*(strlen(prog_info->out_dir) + 10));
+  sprintf(idv,"%s/coverage",prog_info->out_dir);
+  
+  if(mkdir(idv,0776) != 0)
+  {
+    free(idv);
+    fprintf(stderr,"failed to coverage directory in output\n");
+    return 1;
+  }
+
+  free(idv);
+
+  printf("===OPTION CHECK===\n");
+  printf("Input Path: %s\nOutput Path: %s\nBinary Path: %s\n",prog_info->inp_dir,prog_info->out_dir,prog_info->binary);
   return 0;
 
 print_usage:
@@ -166,7 +180,7 @@ int find_input(prog_info_t* prog_info){
   }
 
   indiv_coverage = (indiv_coverage_t*)malloc(sizeof(indiv_coverage_t)*prog_info->inputs_num);
-
+  printf("Total Input: %d\n",prog_info->inputs_num);
   return 0;
 }
 
@@ -284,6 +298,7 @@ int run(prog_info_t* prog_info){
   int ret ;
 
   if(child == 0){
+    alarm(3);
     execute_prog(prog_info);
 
   }else if(child > 0){
@@ -332,8 +347,8 @@ void save_result(){
 
     int idv_result_len = strlen(prog_info->inputs[i]);
 
-    char* idv_path = (char*)malloc(sizeof(char)*(out_dir_len + idv_result_len + 6));
-    sprintf(idv_path,"%s/%s.csv",prog_info->out_dir,prog_info->inputs[i]);
+    char* idv_path = (char*)malloc(sizeof(char)*(out_dir_len + idv_result_len + 15));
+    sprintf(idv_path,"%s/coverage/%s.csv",prog_info->out_dir,prog_info->inputs[i]);
 
     FILE* fp2 = fopen(idv_path,"w+");
     fprintf(fp2,"callee,caller,caller_line,hit,line number\n");
@@ -376,6 +391,7 @@ void translate_addr(){
       table_trans[index] = i;
       int len = strlen(union_coverage.total_coverage[i]);
       int addr2_cnt = 0;
+
       for(int j = 0; j < len; j++){
         if(union_coverage.total_coverage[i][j] == ','){
           addr2_cnt++;
@@ -391,7 +407,7 @@ void translate_addr(){
   }
 
   if(pipe(out_pipes) != 0){
-    perror("Out Pipe Error\n");
+    perror("(Translate) Pipe Error\n");
     exit(1);
   }
 
