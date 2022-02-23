@@ -41,7 +41,10 @@
 
 <img width="498" alt = "image" src="https://user-images.githubusercontent.com/61729954/154293590-7ef9b8e4-3a1f-48ff-8da7-f1d4edca936a.png">
 
-### 4. Display result in terminal
+### 4. Display example result in terminal
+```bash
+./funcov_m -i chec -o test/mpc/output/ -b test/mpc/math_file_fuzzer @@
+```
 ```bash
 ===OPTION CHECK===
 Input Path: chec
