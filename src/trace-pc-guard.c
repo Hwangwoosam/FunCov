@@ -13,7 +13,7 @@
 
 int shmid;
 SHM_info_t* shm_info = NULL;
-void* shared_memory = (void*)0;
+int num = 0;
 
 unsigned short hash16(char* name){
   unsigned hash_val = 0;
@@ -36,8 +36,9 @@ void add_elem(char* func_line ,int hash_val){
 }
 
 void lookup(char* callee,char* caller, char* caller_line){
-  
-  char func_line[512];
+   shm_info =(SHM_info_t*) shm_attach(shmid);
+
+  char func_line[MAX_BUF];
   sprintf(func_line,"%s,%s,%s",callee,caller,caller_line);
 
   int hash_val = hash16(func_line);
@@ -47,26 +48,24 @@ void lookup(char* callee,char* caller, char* caller_line){
   {
     if(shm_info->func_coverage[i].hit_cnt == 0){
       add_elem(func_line,i);    
-      
       break;
     }else{
  
       if(strcmp(shm_info->func_coverage[i].func_line,func_line) == 0){
-
         shm_info->func_coverage[i].hit_cnt++;
         break;
       }
-
     }
 
     i++;
-    
+
     if(i >= HASH_SIZE){
       i = 0;
     }
 
   }while(i != hash_val);
 
+  shm_dettach(shm_info);
 }
 
 void __sanitizer_cov_trace_pc_guard_init(uint32_t *start,uint32_t *stop) {
@@ -75,31 +74,29 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t *start,uint32_t *stop) {
   for (uint32_t *x = start; x < stop; x++){
     *x = ++N;  // Guards should start from 1.
   }
-}
 
+   shmid = shm_alloc(1);
+}
 
 void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
   if (!*guard) return; 
 
-  shmid = shm_alloc(1);
-
-  shared_memory = shmat(shmid,(void*)0,0);
-  shm_info =(SHM_info_t*) shared_memory;
 
   char* callee;
   char* caller;
   char* caller_line;
 
-  void* buffer[1024];
+  void* buffer[MAX_BUF];
   int addr_num = backtrace(buffer,1024);
 
   char **strings;
   strings = backtrace_symbols(buffer,addr_num);
   
+
   if(strstr(strings[2],"+") == NULL || strstr(strings[3],"+") == NULL){
     return ;
   }
-  
+    
   callee = strtok(strings[2],"(");
   callee = strtok(NULL,"+");
 
@@ -112,12 +109,10 @@ void __sanitizer_cov_trace_pc_guard(uint32_t *guard) {
 
   caller_line = strtok(NULL,"[");
   caller_line = strtok(NULL,"]");
-  
+    
   lookup(callee,caller,caller_line);
-  
+
   free(strings);
-
-  shm_dettach(shm_info);
-
+  
 }
 
