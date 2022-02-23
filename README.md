@@ -21,7 +21,7 @@
 
 ### 2. Execute `Funcov`
 ```bash
-# usage: ./funcov_m -i [input_dir] -o [output_dir] -b [binary file]
+# usage: ./funcov_m -i [input_dir] -o [output_dir] -b [binary file] (optino)@@
 
 # required
 # -i : input directory path
@@ -30,6 +30,7 @@
 # optional
 # -o : output directory path
 # If there is no argument about the output directory, the directory called output is set as a default value. 
+# @@ : When input is given as a file argument 
 ```
 ### 3. Result directory
 
@@ -40,3 +41,16 @@
 
 <img width="498" alt = "image" src="https://user-images.githubusercontent.com/61729954/154293590-7ef9b8e4-3a1f-48ff-8da7-f1d4edca936a.png">
 
+### 4. Display result in terminal
+```bash
+===OPTION CHECK===
+Input Path: chec
+Output Path: test/mpc/output/
+Binary Path: test/mpc/math_file_fuzzer
+Total Input: 3
+[0]id:000000,time:0,execs:0,orig:math_bnf
+[1]id:000001,src:000000,time:223,execs:83,op:havoc,rep:8,+cov
+[2]id:000002,src:000000,time:266,execs:92,op:havoc,rep:8,+cov
+===Translate address To Line number success===
+===Save result success===
+```
