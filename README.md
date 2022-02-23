@@ -34,7 +34,7 @@
 ```
 ### 3. Result directory
 
-* **coverage/** : This directory stores the function coverage for each input.
+* **coverage** : This directory stores the function coverage for each input.
 * **union.csv** : This file stores the function coverage for the entire input.
 
 * **This is the result of test case(mpc)**
@@ -57,3 +57,10 @@ Total Input: 3
 ===Translate address To Line number success===
 ===Save result success===
 ```
+
+### 5. Result file format in output directory
+* **union.csv**
+<img width = "498" alt = "image" src = "https://user-images.githubusercontent.com/61729954/155263449-0d400369-97a7-4783-bbd8-6bd18538d81f.png">
+
+* **coverage/individual_result**
+<img width = "498" alt = "image" src = "https://user-images.githubusercontent.com/61729954/155263604-98267457-5937-4466-886f-5ca222be5f74.png">
