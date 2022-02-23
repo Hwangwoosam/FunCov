@@ -420,7 +420,7 @@ void save_result(){
   fclose(fp);
   free(union_path);
 
-  printf("Save result success")
+  printf("Save result success");
 }
 
 int translate_addr(){
