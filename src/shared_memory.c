@@ -25,6 +25,17 @@ int shm_alloc(int opt){
   return shmid;
 }
 
+void* shm_attach(int shm_id){
+  void * ptr = shmat(shm_id,0,0);
+  if(ptr == (void*)(-1)){
+    fprintf(stderr,"shm_attach failed\n");
+    return NULL;
+  }
+
+  return ptr;
+}
+
+
 void shm_dettach(SHM_info_t* shm_info){
   
   if(shmdt(shm_info) == -1){

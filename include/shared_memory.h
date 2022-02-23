@@ -14,6 +14,7 @@ typedef struct SHM_info{
 
 int shm_alloc(int opt);
 void shm_dettach(SHM_info_t* shm_info);
+void* shm_attach(int shmid);
 void shm_dealloc(int shmid);
 
 #endif
